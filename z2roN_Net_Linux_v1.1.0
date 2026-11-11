@@ -1,0 +1,60 @@
+# ==============================================================================
+#  z2roN_Net Linux (네트워크 정보 보기, 리눅스 실행 파일) 자동 빌드
+# ==============================================================================
+#  1) 이 프로젝트 전체(.github 폴더 포함)를 GitHub 저장소에 올립니다.
+#  2) Actions > "z2roN_Net Linux 빌드" > Run workflow  (main 에 올리면 자동 실행)
+#  3) 몇 분 뒤 실행 맨 아래 Artifacts 의 z2roN_Net-linux-v버전 을 내려받아 압축을 풀면
+#     z2roN_Net_Linux_v버전.tar.gz 가 나옵니다. 이것을 풀고 z2roN_Net 파일을 실행합니다.
+#       tar xzf z2roN_Net_Linux_v1.0.0.tar.gz && cd z2roN_Net && ./z2roN_Net
+#  동작: flutter create 로 리눅스 뼈대를 만든 뒤, 이 저장소의 pubspec.yaml / lib 를 덮어써서
+#        빌드합니다. 실행 파일은 lib/ data/ 폴더와 함께 움직이므로 폴더째 보관하세요.
+#  실패하면 빨간 X 단계의 마지막 로그를 복사해서 알려주세요.
+# ==============================================================================
+name: z2roN_Net Linux 빌드
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 빌드 도구 설치
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: 리눅스 뼈대 만들기
+        run: |
+          flutter config --enable-linux-desktop
+          flutter create --org com.z2ron --project-name z2ron_net --platforms=linux app_tmp
+      - name: 소스 덮어쓰기 + 이름 설정
+        run: |
+          cp pubspec.yaml app_tmp/pubspec.yaml
+          rm -rf app_tmp/lib app_tmp/test
+          cp -r lib app_tmp/lib
+          python3 tools/patch_linux.py app_tmp
+      - name: 리눅스 빌드
+        working-directory: app_tmp
+        run: |
+          flutter pub get
+          flutter build linux --release
+      - name: 버전 읽기
+        id: ver
+        run: |
+          echo "v=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml | head -1)" >> "$GITHUB_OUTPUT"
+      - name: 묶기 (tar.gz)
+        run: |
+          rm -rf z2roN_Net
+          cp -r app_tmp/build/linux/x64/release/bundle z2roN_Net
+          chmod +x z2roN_Net/z2roN_Net
+          tar czf z2roN_Net_Linux_v${{ steps.ver.outputs.v }}.tar.gz z2roN_Net
+      - uses: actions/upload-artifact@v4
+        with:
+          name: z2roN_Net-linux-v${{ steps.ver.outputs.v }}
+          path: z2roN_Net_Linux_v${{ steps.ver.outputs.v }}.tar.gz
